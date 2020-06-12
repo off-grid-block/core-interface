@@ -1,4 +1,4 @@
-module github.com/off-grid-block/core-interface/sdk
+module github.com/off-grid-block/core-interface
 
 go 1.13
 
