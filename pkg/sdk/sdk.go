@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/channel"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
-	mspclient "github.com/hyperledger/fabric-sdk-go/pkg/client/msp"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
 	"github.com/hyperledger/fabric-sdk-go/pkg/common/errors/retry"
 	"github.com/hyperledger/fabric-sdk-go/pkg/common/providers/msp"
 	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
+	"github.com/hyperledger/fabric-sdk-go/third_party/github.com/hyperledger/fabric/common/cauthdsl"
+	mspclient "github.com/hyperledger/fabric-sdk-go/pkg/client/msp"
+	packager "github.com/hyperledger/fabric-sdk-go/pkg/fab/ccpackager/gopackager"
 	"github.com/pkg/errors"
+
+	cic "github.com/off-grid-block/core-interface/pkg/config"
 )
 
 // FabricSetup implementation
@@ -19,11 +23,11 @@ type SDKConfig struct {
 	OrgID           string
 	OrdererID       string
 	ChannelID       string
-	ChainCodeID     string
 	initialized     bool
 	ChannelConfig   string
 	ChaincodeGoPath string
-	ChaincodePath   string
+	ChaincodePath   map[string]string
+	CollectionPath  map[string]string
 	OrgAdmin        string
 	OrgName         string
 	UserName        string
@@ -37,13 +41,14 @@ type SDKConfig struct {
 // Set up DEON Admin SDK
 func SetupSDK() (*SDKConfig, error) {
 
+	var ccPath = map[string]string{"vote": "vote/chaincode"}
+
 	fSetup := &SDKConfig {
 		OrdererID: 			"orderer.example.com",
 		ChannelID: 			"mychannel",
 		ChannelConfig:		"/Users/brianli/deon/fabric-samples/first-network/channel-artifacts/channel.tx",
-		// ChainCodeID:		"vote",
-		// ChaincodeGoPath:	"/Users/brianli/deon",
-		// ChaincodePath:		"vote/chaincode",
+		ChaincodeGoPath:	"/Users/brianli/deon",
+		ChaincodePath:		ccPath,
 		OrgAdmin:			"Admin",
 		OrgName:			"org1",
 		ConfigFile:			"config.yaml",
@@ -65,8 +70,17 @@ func SetupSDK() (*SDKConfig, error) {
 
 	err = fSetup.ChannelSetup()
 	if err != nil {
-		// fmt.Printf("Failed to set up channel: %v\n", err)
 		return fSetup, errors.WithMessage(err, "Failed to set up channel")
+	}
+
+	err = fSetup.ClientSetup()
+	if err != nil {
+		return fSetup, errors.WithMessage(err, "Failed to set up client")
+	}
+
+	err = fSetup.ChainCodeInstallationInstantiation()
+	if err != nil {
+		return fSetup, errors.WithMessage(err, "Failed to set up chaincodes")
 	}
 
 	return fSetup, nil
@@ -99,9 +113,6 @@ func (s *SDKConfig) AdminSetup() error {
 
 	// The resource management client is responsible for managing channels (create/update channel)
 	resourceManagerClientContext := s.FabricSDK.Context(fabsdk.WithUser(s.OrgAdmin), fabsdk.WithOrg(s.OrgName))
-//	if err != nil {
-//		return errors.WithMessage(err, "failed to load Admin identity")
-//	}
 	resMgmtClient, err := resmgmt.New(resourceManagerClientContext)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create channel management client from Admin identity")
@@ -144,8 +155,10 @@ func (s *SDKConfig) ChannelSetup() error {
 
 // Setup client and setupt access to channel events
 func (s *SDKConfig)  ClientSetup() error {
+
 	// Channel client is used to Query or Execute transactions
 	var err error
+
 	clientChannelContext := s.FabricSDK.ChannelContext(s.ChannelID, fabsdk.WithUser(s.UserName))
 	s.Client, err = channel.New(clientChannelContext)
 	if err != nil {
@@ -166,4 +179,65 @@ func (s *SDKConfig)  ClientSetup() error {
 // Close the SDK
 func (s *SDKConfig) CloseSDK() {
 	s.FabricSDK.Close()
+}
+
+// Installs and instantiates chaincode for all apps
+func (s *SDKConfig) ChainCodeInstallationInstantiation() error {
+
+	// install & instantiate cc for each of the apps
+	for ccID, ccPath := range s.ChaincodePath {
+
+		// Create the chaincode package that will be sent to the peers
+		ccPackage, err := packager.NewCCPackage(ccPath, s.ChaincodeGoPath)
+		if err != nil {
+			return errors.WithMessage(err, "failed to create chaincode package")
+		}
+
+		fmt.Printf("Chaincode package %v created\n", ccID)
+
+		// Install the chaincode to org peers
+		installCCReq := resmgmt.InstallCCRequest{
+			Name: ccID, 
+			Path: ccPath, 
+			Version: "0", 
+			Package: ccPackage}
+		_, err = s.Mgmt.InstallCC(installCCReq, resmgmt.WithRetry(retry.DefaultResMgmtOpts))
+		if err != nil {
+			return errors.WithMessage(err, "failed to install chaincode")
+		}
+
+		fmt.Printf("Chaincode %v installed\n", ccID)
+
+		// Set up chaincode policy (***DEFAULT HARD-CODED POLICY***)
+		ccPolicy := cauthdsl.SignedByAnyMember([]string{"Org1MSP"})
+
+		cfg, err := cic.NewCollectionConfig(ccPath)
+		if err != nil {
+			return errors.WithMessage(err, "Failed to read collections config information")
+		}
+
+		// instantiate chaincode with cc policy and collection configs
+		resp, err := s.Mgmt.InstantiateCC(
+			// Channel ID
+			s.ChannelID, 
+			// InstantiateCCRequest struct
+			resmgmt.InstantiateCCRequest{
+				Name: ccID, 
+				Path: s.ChaincodeGoPath, 
+				Version: "0", 
+				Args: [][]byte{[]byte("init")}, 
+				Policy: ccPolicy, 
+				CollConfig: cfg,
+			},
+			// options
+			resmgmt.WithRetry(retry.DefaultResMgmtOpts))
+
+		if err != nil || resp.TransactionID == "" {
+			return errors.WithMessage(err, "failed to instantiate the chaincode")
+		}
+
+		fmt.Printf("Chaincode %v instantiated\n", ccID)
+	}
+
+	return nil
 }
