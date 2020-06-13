@@ -147,7 +147,7 @@ func (s *SDKConfig)  ClientSetup() error {
 	// Channel client is used to Query or Execute transactions
 	var err error
 	clientChannelContext := s.FabricSDK.ChannelContext(s.ChannelID, fabsdk.WithUser(s.UserName))
-	s.client, err = channel.New(clientChannelContext)
+	s.Client, err = channel.New(clientChannelContext)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create new channel client")
 	}
