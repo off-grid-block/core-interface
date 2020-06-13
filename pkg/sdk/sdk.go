@@ -27,10 +27,10 @@ type SDKConfig struct {
 	OrgAdmin        string
 	OrgName         string
 	UserName        string
-	client          *channel.Client
-	mgmt            *resmgmt.Client
-	fsdk            *fabsdk.FabricSDK
-	event           *event.Client
+	Client          *channel.Client
+	Mgmt            *resmgmt.Client
+	FabricSDK 		*fabsdk.FabricSDK
+	Event           *event.Client
 	MgmtIdentity	msp.SigningIdentity
 }
 
@@ -85,7 +85,7 @@ func (s *SDKConfig) Initialization() error {
 	if err != nil {
 		return errors.WithMessage(err, "failed to create SDK")
 	}
-	s.fsdk = fsdk
+	s.FabricSDK = fsdk
 	fmt.Println("SDK is now created")
 
 	fmt.Println("Initialization Successful")
@@ -98,7 +98,7 @@ func (s *SDKConfig) Initialization() error {
 func (s *SDKConfig) AdminSetup() error {
 
 	// The resource management client is responsible for managing channels (create/update channel)
-	resourceManagerClientContext := s.fsdk.Context(fabsdk.WithUser(s.OrgAdmin), fabsdk.WithOrg(s.OrgName))
+	resourceManagerClientContext := s.FabricSDK.Context(fabsdk.WithUser(s.OrgAdmin), fabsdk.WithOrg(s.OrgName))
 //	if err != nil {
 //		return errors.WithMessage(err, "failed to load Admin identity")
 //	}
@@ -106,11 +106,11 @@ func (s *SDKConfig) AdminSetup() error {
 	if err != nil {
 		return errors.WithMessage(err, "failed to create channel management client from Admin identity")
 	}
-	s.mgmt = resMgmtClient
+	s.Mgmt = resMgmtClient
 	fmt.Println("Resource management client created")
 
 	// The MSP client allow us to retrieve user information from their identity, like its signing identity which we will need to save the channel
-	mspClient, err := mspclient.New(s.fsdk.Context(), mspclient.WithOrg(s.OrgName))
+	mspClient, err := mspclient.New(s.FabricSDK.Context(), mspclient.WithOrg(s.OrgName))
 	if err != nil {
 		return errors.WithMessage(err, "failed to create MSP client")
 	}
@@ -127,14 +127,14 @@ func (s *SDKConfig) ChannelSetup() error {
 
 	req := resmgmt.SaveChannelRequest{ChannelID: s.ChannelID, ChannelConfigPath: s.ChannelConfig, SigningIdentities: []msp.SigningIdentity{s.MgmtIdentity}}
 	//create channel
-	txID, err := s.mgmt.SaveChannel(req, resmgmt.WithOrdererEndpoint(s.OrdererID))
+	txID, err := s.Mgmt.SaveChannel(req, resmgmt.WithOrdererEndpoint(s.OrdererID))
 	if err != nil || txID.TransactionID == "" {
 		return errors.WithMessage(err, "failed to save channel")
 	}
 	fmt.Println("Channel created")
 
 	// Make mgmt user join the previously created channel
-	if err = s.mgmt.JoinChannel(s.ChannelID, resmgmt.WithRetry(retry.DefaultResMgmtOpts), resmgmt.WithOrdererEndpoint(s.OrdererID)); err != nil {
+	if err = s.Mgmt.JoinChannel(s.ChannelID, resmgmt.WithRetry(retry.DefaultResMgmtOpts), resmgmt.WithOrdererEndpoint(s.OrdererID)); err != nil {
 		return errors.WithMessage(err, "failed to make mgmt join channel")
 	}
 	fmt.Println("Channel joined")
@@ -146,7 +146,7 @@ func (s *SDKConfig) ChannelSetup() error {
 func (s *SDKConfig)  ClientSetup() error {
 	// Channel client is used to Query or Execute transactions
 	var err error
-	clientChannelContext := s.fsdk.ChannelContext(s.ChannelID, fabsdk.WithUser(s.UserName))
+	clientChannelContext := s.FabricSDK.ChannelContext(s.ChannelID, fabsdk.WithUser(s.UserName))
 	s.client, err = channel.New(clientChannelContext)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create new channel client")
@@ -154,7 +154,7 @@ func (s *SDKConfig)  ClientSetup() error {
 	fmt.Println("Channel client created")
 
 	// Creation of the client which will enables access to our channel events
-	s.event, err = event.New(clientChannelContext)
+	s.Event, err = event.New(clientChannelContext)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create new event client")
 	}
@@ -165,5 +165,5 @@ func (s *SDKConfig)  ClientSetup() error {
 
 // Close the SDK
 func (s *SDKConfig) CloseSDK() {
-	s.fsdk.Close()
+	s.FabricSDK.Close()
 }
