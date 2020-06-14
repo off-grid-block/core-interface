@@ -12,9 +12,10 @@ import (
 	"github.com/hyperledger/fabric-sdk-go/third_party/github.com/hyperledger/fabric/common/cauthdsl"
 	mspclient "github.com/hyperledger/fabric-sdk-go/pkg/client/msp"
 	packager "github.com/hyperledger/fabric-sdk-go/pkg/fab/ccpackager/gopackager"
+	"github.com/hyperledger/fabric-protos-go/peer"
 	"github.com/pkg/errors"
 
-	cic "github.com/off-grid-block/core-interface/pkg/config"
+	// cic "github.com/off-grid-block/core-interface/pkg/config"
 )
 
 // FabricSetup implementation
@@ -203,10 +204,49 @@ func (s *SDKConfig) ChainCodeInstallationInstantiation() error {
 		// Set up chaincode policy (***DEFAULT HARD-CODED POLICY***)
 		ccPolicy := cauthdsl.SignedByAnyMember([]string{"Org1MSP"})
 
-		cfg, err := cic.NewCollectionConfig(ccPath)
+		/* COLLECTION CONFIG (TODO: USE NewCollectionConfig()) */
+
+		// Create collection config for collectionVotePrivateDetails
+		var collCfgPrivVoteRequiredPeerCount, collCfgPrivVoteMaximumPeerCount int32
+		var collCfgPrivVoteBlockToLive uint64 
+
+		collCfgPrivVoteName              := "collectionVotePrivateDetails"
+		collCfgPrivVoteBlockToLive       = 3
+		collCfgPrivVoteRequiredPeerCount = 0
+		collCfgPrivVoteMaximumPeerCount  = 3
+		collCfgPrivVotePolicy            := "OR('Org1MSP.member')"
+
+		collCfgPrivVote, err := newCollectionConfig(
+			collCfgPrivVoteName,
+			collCfgPrivVotePolicy,
+			collCfgPrivVoteRequiredPeerCount,
+			collCfgPrivVoteMaximumPeerCount,
+			collCfgPrivVoteBlockToLive)
 		if err != nil {
-			return errors.WithMessage(err, "Failed to read collections config information")
+		    return errors.WithMessage(err, "failed to create collection config")
 		}
+
+		// Create collection config for collectionPollPrivateDetails
+		var collCfgPrivPollRequiredPeerCount, collCfgPrivPollMaximumPeerCount int32
+		var collCfgPrivPollBlockToLive uint64 
+
+		collCfgPrivPollName              := "collectionPollPrivateDetails"
+		collCfgPrivPollBlockToLive       = 3
+		collCfgPrivPollRequiredPeerCount = 0
+		collCfgPrivPollMaximumPeerCount  = 3
+		collCfgPrivPollPolicy            := "OR('Org1MSP.member')"
+
+		collCfgPrivPoll, err := newCollectionConfig(
+			collCfgPrivPollName,
+			collCfgPrivPollPolicy,
+			collCfgPrivPollRequiredPeerCount,
+			collCfgPrivPollMaximumPeerCount,
+			collCfgPrivPollBlockToLive)
+		if err != nil {
+		    return errors.WithMessage(err, "failed to create collection config")
+		}
+
+		cfg := []*peer.CollectionConfig{collCfgPrivVote, collCfgPrivPoll}
 
 		// instantiate chaincode with cc policy and collection configs
 		resp, err := s.Mgmt.InstantiateCC(
@@ -232,6 +272,30 @@ func (s *SDKConfig) ChainCodeInstallationInstantiation() error {
 	}
 
 	return nil
+}
+
+// Create collection config to for chaincode instantiation
+func newCollectionConfig(colName, policy string, reqPeerCount, maxPeerCount int32, blockToLive uint64) (*peer.CollectionConfig, error) {
+	p, err := cauthdsl.FromString(policy)
+	if err != nil {
+        return nil, err
+    }
+    cpc := &peer.CollectionPolicyConfig{
+        Payload: &peer.CollectionPolicyConfig_SignaturePolicy{
+            SignaturePolicy: p,
+        },
+    }
+    return &peer.CollectionConfig{
+        Payload: &peer.CollectionConfig_StaticCollectionConfig{
+            StaticCollectionConfig: &peer.StaticCollectionConfig{
+                Name:              colName,
+                MemberOrgsPolicy:  cpc,
+                RequiredPeerCount: reqPeerCount,
+                MaximumPeerCount:  maxPeerCount,
+                BlockToLive:       blockToLive,
+            },
+        },
+    }, nil
 }
 
 // Close the SDK
