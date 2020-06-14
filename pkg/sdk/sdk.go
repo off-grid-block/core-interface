@@ -23,14 +23,13 @@ type SDKConfig struct {
 	OrgID           string
 	OrdererID       string
 	ChannelID       string
-	initialized     bool
-	ChannelConfig   string
-	ChaincodeGoPath string
-	ChaincodePath   map[string]string
-	CollectionPath  map[string]string
 	OrgAdmin        string
 	OrgName         string
 	UserName        string
+	initialized     bool
+	ChannelConfig   string
+	ChaincodeGoPath string
+	ChaincodePath   map[string]string 		// maps chaincode ID to chaincode path
 	Client          *channel.Client
 	Mgmt            *resmgmt.Client
 	FabricSDK 		*fabsdk.FabricSDK
@@ -41,14 +40,12 @@ type SDKConfig struct {
 // Set up DEON Admin SDK
 func SetupSDK() (*SDKConfig, error) {
 
-	var ccPath = map[string]string{"vote": "vote/chaincode"}
-
 	fSetup := &SDKConfig {
 		OrdererID: 			"orderer.example.com",
 		ChannelID: 			"mychannel",
 		ChannelConfig:		"/Users/brianli/deon/fabric-samples/first-network/channel-artifacts/channel.tx",
 		ChaincodeGoPath:	"/Users/brianli/deon",
-		ChaincodePath:		ccPath,
+		ChaincodePath: 		make(map[string]string),
 		OrgAdmin:			"Admin",
 		OrgName:			"org1",
 		ConfigFile:			"config.yaml",
@@ -78,10 +75,10 @@ func SetupSDK() (*SDKConfig, error) {
 		return fSetup, errors.WithMessage(err, "Failed to set up client")
 	}
 
-	err = fSetup.ChainCodeInstallationInstantiation()
-	if err != nil {
-		return fSetup, errors.WithMessage(err, "Failed to set up chaincodes")
-	}
+	// err = fSetup.ChainCodeInstallationInstantiation()
+	// if err != nil {
+	// 	return fSetup, errors.WithMessage(err, "Failed to set up chaincodes")
+	// }
 
 	return fSetup, nil
 }
@@ -176,11 +173,6 @@ func (s *SDKConfig)  ClientSetup() error {
 	return nil
 }
 
-// Close the SDK
-func (s *SDKConfig) CloseSDK() {
-	s.FabricSDK.Close()
-}
-
 // Installs and instantiates chaincode for all apps
 func (s *SDKConfig) ChainCodeInstallationInstantiation() error {
 
@@ -240,4 +232,9 @@ func (s *SDKConfig) ChainCodeInstallationInstantiation() error {
 	}
 
 	return nil
+}
+
+// Close the SDK
+func (s *SDKConfig) CloseSDK() {
+	s.FabricSDK.Close()
 }
