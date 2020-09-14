@@ -76,10 +76,10 @@ func SetupSDK() (*SDKConfig, error) {
 		return fSetup, errors.WithMessage(err, "Failed to set up client")
 	}
 
-	// err = fSetup.ChainCodeInstallationInstantiation()
-	// if err != nil {
-	// 	return fSetup, errors.WithMessage(err, "Failed to set up chaincodes")
-	// }
+	err = fSetup.ChainCodeInstallationInstantiation()
+	if err != nil {
+		return fSetup, errors.WithMessage(err, "Failed to set up chaincodes")
+	}
 
 	return fSetup, nil
 }
