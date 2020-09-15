@@ -41,12 +41,16 @@ type SDKConfig struct {
 // Set up DEON Admin SDK
 func SetupSDK() (*SDKConfig, error) {
 
+	ccPaths := map[string]string{
+		"vote": "vote/chaincode",
+	}
+
 	fSetup := &SDKConfig {
 		OrdererID: 			"orderer.example.com",
 		ChannelID: 			"mychannel",
 		ChannelConfig:		"/Users/brianli/deon/fabric-samples/first-network/channel-artifacts/channel.tx",
 		ChaincodeGoPath:	"/Users/brianli/deon",
-		ChaincodePath: 		make(map[string]string),
+		ChaincodePath: 		ccPaths,
 		OrgAdmin:			"Admin",
 		OrgName:			"org1",
 		ConfigFile:			"config.yaml",
@@ -59,7 +63,7 @@ func SetupSDK() (*SDKConfig, error) {
 	}
 
 	// Close SDK
-	defer fSetup.CloseSDK()
+	// defer fSetup.CloseSDK()
 
 	err = fSetup.AdminSetup()
 	if err != nil {
